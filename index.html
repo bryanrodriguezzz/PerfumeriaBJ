@@ -1233,6 +1233,7 @@ function getMargin(w){
 function r500(v){ return Math.round(v/500)*500; }
 function fmt(v){ return '₡'+Math.round(v).toLocaleString('es-CR'); }
 function retail(w){ return r500(w*(1+getMargin(w))); }
+function norm(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function genderIcon(c){ return c==='Caballero'?'🧔':c==='Dama'?'👩':c==='Estuche'?'🎁':'📦'; }
 
 // ════════════════════════════════
@@ -1258,8 +1259,8 @@ nameSearchEl.addEventListener('input',function(){
   const q=this.value.trim();
   nrClear.classList.toggle('visible',q.length>0);
   if(q.length<2){acEl.style.display='none';return;}
-  const ql=q.toLowerCase();
-  const res=P.filter(p=>p.n.toLowerCase().includes(ql)||p.b.toLowerCase().includes(ql)).slice(0,12);
+  const ql=norm(q);
+  const res=P.filter(p=>norm(p.n).includes(ql)||norm(p.b).includes(ql)).slice(0,12);
   if(!res.length){acEl.style.display='none';return;}
   acEl.innerHTML=res.map(p=>{
     const hl=p.n.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<em>$1</em>');
@@ -1343,7 +1344,7 @@ wInput.addEventListener('input',calculate);
 let curGender='todos', curView='list', catQuery='';
 
 document.getElementById('catalogSearch').addEventListener('input',function(){
-  catQuery=this.value.trim().toLowerCase();
+  catQuery=this.value.trim();
   renderCatalog();
 });
 function setGender(g,el){
@@ -1362,7 +1363,7 @@ function setView(v){
 function filtered(){
   let items=P;
   if(curGender!=='todos') items=items.filter(p=>p.c===curGender);
-  if(catQuery) items=items.filter(p=>p.n.toLowerCase().includes(catQuery)||p.b.toLowerCase().includes(catQuery));
+  if(catQuery) items=items.filter(p=>norm(p.n).includes(norm(catQuery))||norm(p.b).includes(norm(catQuery)));
   return items;
 }
 
@@ -1465,8 +1466,8 @@ const orderAcEl = document.getElementById('orderAc');
 orderSearchEl.addEventListener('input', function(){
   const q=this.value.trim();
   if(q.length<2){orderAcEl.style.display='none';return;}
-  const ql=q.toLowerCase();
-  const res=P.filter(p=>p.n.toLowerCase().includes(ql)||p.b.toLowerCase().includes(ql)).slice(0,10);
+  const ql=norm(q);
+  const res=P.filter(p=>norm(p.n).includes(ql)||norm(p.b).includes(ql)).slice(0,10);
   if(!res.length){orderAcEl.style.display='none';return;}
   orderAcEl.innerHTML=res.map(p=>{
     const r=retail(p.w);
