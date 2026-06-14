@@ -1233,8 +1233,12 @@ function getMargin(w){
 function r500(v){ return Math.round(v/500)*500; }
 function fmt(v){ return '₡'+Math.round(v).toLocaleString('es-CR'); }
 function retail(w){ return r500(w*(1+getMargin(w))); }
-function norm(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function genderIcon(c){ return c==='Caballero'?'🧔':c==='Dama'?'👩':c==='Estuche'?'🎁':'📦'; }
+
+// Pre-compute normalized search strings for every product
+P.forEach(p=>{ p._s = norm(p.n)+' '+norm(p.b); });
+function matches(p, q){ return p._s.includes(norm(q)); }
 
 // ════════════════════════════════
 // TABS
@@ -1259,8 +1263,7 @@ nameSearchEl.addEventListener('input',function(){
   const q=this.value.trim();
   nrClear.classList.toggle('visible',q.length>0);
   if(q.length<2){acEl.style.display='none';return;}
-  const ql=norm(q);
-  const res=P.filter(p=>norm(p.n).includes(ql)||norm(p.b).includes(ql)).slice(0,12);
+  const res=P.filter(p=>matches(p,q)).slice(0,12);
   if(!res.length){acEl.style.display='none';return;}
   acEl.innerHTML=res.map(p=>{
     const hl=p.n.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<em>$1</em>');
@@ -1363,7 +1366,7 @@ function setView(v){
 function filtered(){
   let items=P;
   if(curGender!=='todos') items=items.filter(p=>p.c===curGender);
-  if(catQuery) items=items.filter(p=>norm(p.n).includes(norm(catQuery))||norm(p.b).includes(norm(catQuery)));
+  if(catQuery) items=items.filter(p=>matches(p,catQuery));
   return items;
 }
 
@@ -1449,9 +1452,46 @@ function addFromModal(){
 // ════════════════════════════════
 // ORDER SYSTEM
 // ════════════════════════════════
-// order = [{id, name, brand, wholesaleUnit, retailUnit, qty, isCustom}]
+const ORDER_KEY = 'perfumeriaBJ_order';
+const COUNTER_KEY = 'perfumeriaBJ_counter';
+
+function saveOrder(){
+  const data = JSON.stringify(order);
+  const cnt = String(orderIdCounter);
+  // 1) localStorage
+  try { localStorage.setItem(ORDER_KEY, data); localStorage.setItem(COUNTER_KEY, cnt); } catch(e){}
+  // 2) sessionStorage backup
+  try { sessionStorage.setItem(ORDER_KEY, data); sessionStorage.setItem(COUNTER_KEY, cnt); } catch(e){}
+  // 3) Cookie backup (expires 30 days)
+  try {
+    const exp = new Date(Date.now()+30*24*60*60*1000).toUTCString();
+    document.cookie = ORDER_KEY+'='+encodeURIComponent(data)+';expires='+exp+';path=/';
+    document.cookie = COUNTER_KEY+'='+cnt+';expires='+exp+';path=/';
+  } catch(e){}
+}
+
+function getCookie(name){
+  const match = document.cookie.match(new RegExp('(?:^|; )'+name+'=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function loadOrder(){
+  let data = null, cnt = null;
+  // Try localStorage first
+  try { data = localStorage.getItem(ORDER_KEY); cnt = localStorage.getItem(COUNTER_KEY); } catch(e){}
+  // Fallback to sessionStorage
+  if(!data) try { data = sessionStorage.getItem(ORDER_KEY); cnt = sessionStorage.getItem(COUNTER_KEY); } catch(e){}
+  // Fallback to cookie
+  if(!data) { data = getCookie(ORDER_KEY); cnt = getCookie(COUNTER_KEY); }
+  try {
+    if(data) order = JSON.parse(data);
+    if(cnt) orderIdCounter = parseInt(cnt)+1;
+  } catch(e){ order=[]; orderIdCounter=0; }
+}
+
 let order = [];
 let orderIdCounter = 0;
+loadOrder();
 
 // Date display
 (function(){
@@ -1466,8 +1506,7 @@ const orderAcEl = document.getElementById('orderAc');
 orderSearchEl.addEventListener('input', function(){
   const q=this.value.trim();
   if(q.length<2){orderAcEl.style.display='none';return;}
-  const ql=norm(q);
-  const res=P.filter(p=>norm(p.n).includes(ql)||norm(p.b).includes(ql)).slice(0,10);
+  const res=P.filter(p=>matches(p,q)).slice(0,10);
   if(!res.length){orderAcEl.style.display='none';return;}
   orderAcEl.innerHTML=res.map(p=>{
     const r=retail(p.w);
@@ -1491,10 +1530,10 @@ function addToOrderFromSearch(idx){
 function addToOrder(pIdx){
   const p=P[pIdx];
   const r=retail(p.w);
-  // Check if already in order
   const existing=order.find(o=>!o.isCustom && o.sourceIdx===pIdx);
   if(existing){ existing.qty++; }
   else { order.push({id:orderIdCounter++, sourceIdx:pIdx, name:p.n, brand:p.b, wholesaleUnit:p.w, retailUnit:r, qty:1, isCustom:false}); }
+  saveOrder();
   renderOrder();
 }
 
@@ -1506,6 +1545,7 @@ function addCustomItem(){
   order.push({id:orderIdCounter++, sourceIdx:-1, name, brand:'Personalizado', wholesaleUnit:price, retailUnit:r, qty:1, isCustom:true});
   document.getElementById('customName').value='';
   document.getElementById('customPrice').value='';
+  saveOrder();
   renderOrder();
   showToast('✅ Ítem agregado');
 }
@@ -1514,17 +1554,19 @@ function changeQty(id, delta){
   const item=order.find(o=>o.id===id);
   if(!item) return;
   item.qty=Math.max(1, item.qty+delta);
+  saveOrder();
   renderOrder();
 }
 
 function removeItem(id){
   order=order.filter(o=>o.id!==id);
+  saveOrder();
   renderOrder();
 }
 
 function clearOrder(){
   if(order.length===0) return;
-  if(confirm('¿Vaciar el pedido completo?')){ order=[]; renderOrder(); }
+  if(confirm('¿Vaciar el pedido completo?')){ order=[]; saveOrder(); renderOrder(); }
 }
 
 function renderOrder(){
